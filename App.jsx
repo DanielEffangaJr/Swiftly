@@ -1,479 +1,822 @@
 import { useState, useEffect, useRef } from "react";
+import { supabase } from "./supabase";
 
-const VIEWS = { HOME: "home", BOOK: "book", TRACK: "track", RIDERS: "riders", CONFIRM: "confirm" };
+const VIEWS = {
+  LANDING: "landing", LOGIN: "login", SIGNUP: "signup",
+  DASHBOARD: "dashboard", BOOK: "book", PAYMENT: "payment",
+  TRACKING: "tracking", PROFILE: "profile",
+};
 
 const riders = [
-  { id: 1, name: "Marcus O.", rating: 4.9, trips: 1243, bike: "Motorcycle", eta: "8 min", distance: "1.2km", avatar: "MO", status: "available", location: { x: 38, y: 44 } },
-  { id: 2, name: "Aisha B.", rating: 4.8, trips: 987, bike: "Bicycle", eta: "12 min", distance: "2.1km", avatar: "AB", status: "available", location: { x: 55, y: 62 } },
-  { id: 3, name: "Tunde K.", rating: 4.95, trips: 2104, bike: "Motorcycle", eta: "5 min", distance: "0.8km", avatar: "TK", status: "available", location: { x: 48, y: 35 } },
-  { id: 4, name: "Zara M.", rating: 4.7, trips: 654, bike: "Bicycle", eta: "15 min", distance: "2.8km", avatar: "ZM", status: "busy", location: { x: 70, y: 55 } },
+  { id: 1, name: "Emeka O.", rating: 4.9, trips: 1243, bike: "Motorcycle", eta: "5 min", distance: "0.8km", avatar: "EO", status: "available", price: 1500 },
+  { id: 2, name: "Fatima B.", rating: 4.8, trips: 987, bike: "Bicycle", eta: "10 min", distance: "1.5km", avatar: "FB", status: "available", price: 1000 },
+  { id: 3, name: "Chukwudi K.", rating: 4.95, trips: 2104, bike: "Motorcycle", eta: "3 min", distance: "0.5km", avatar: "CK", status: "available", price: 2000 },
+  { id: 4, name: "Amina S.", rating: 4.7, trips: 654, bike: "Van", eta: "12 min", distance: "2.1km", avatar: "AS", status: "busy", price: 3500 },
 ];
 
 const packageTypes = [
-  { id: "docs", label: "Documents", icon: "📄", desc: "Papers, files, envelopes" },
-  { id: "small", label: "Small Pack", icon: "📦", desc: "Fits in a backpack" },
-  { id: "large", label: "Large Pack", icon: "🗃️", desc: "Bulky or heavy items" },
-  { id: "food", label: "Food & Drinks", icon: "🍱", desc: "Meals, groceries" },
+  { id: "docs", label: "Documents", icon: "📄", desc: "Papers, files, envelopes", basePrice: 500 },
+  { id: "small", label: "Small Package", icon: "📦", desc: "Fits in a backpack", basePrice: 1000 },
+  { id: "large", label: "Large Package", icon: "🗃️", desc: "Bulky or heavy items", basePrice: 2000 },
+  { id: "food", label: "Food & Drinks", icon: "🍱", desc: "Meals, groceries", basePrice: 800 },
 ];
 
 const trackStages = [
-  { id: 0, label: "Order Confirmed", icon: "✓", done: true },
-  { id: 1, label: "Rider Assigned", icon: "🏍", done: true },
-  { id: 2, label: "Picked Up", icon: "📦", done: true },
-  { id: 3, label: "On the Way", icon: "🛣", done: false, active: true },
-  { id: 4, label: "Delivered", icon: "🏠", done: false },
+  { id: 0, label: "Order Confirmed", icon: "✓", time: "Confirmed" },
+  { id: 1, label: "Rider Assigned", icon: "🏍", time: "Assigned" },
+  { id: 2, label: "Package Picked Up", icon: "📦", time: "Picked up" },
+  { id: 3, label: "On the Way", icon: "🛣", time: "Now", active: true },
+  { id: 4, label: "Delivered", icon: "🏠", time: "" },
 ];
 
 export default function App() {
-  const [view, setView] = useState(VIEWS.HOME);
-  const [step, setStep] = useState(1);
+  const [view, setView] = useState(VIEWS.LANDING);
+  const [user, setUser] = useState(null);
+  const [bookingStep, setBookingStep] = useState(1);
   const [selectedRider, setSelectedRider] = useState(null);
   const [selectedPackage, setSelectedPackage] = useState(null);
-  const [pickupAddr, setPickupAddr] = useState("");
-  const [dropAddr, setDropAddr] = useState("");
-  const [riderDot, setRiderDot] = useState({ x: 48, y: 35 });
-  const [progress, setProgress] = useState(62);
-  const [eta, setEta] = useState(7);
-  const [pulseMap, setPulseMap] = useState(false);
-  const animRef = useRef(null);
+  const [pickup, setPickup] = useState("");
+  const [dropoff, setDropoff] = useState("");
+  const [authForm, setAuthForm] = useState({ name: "", email: "", phone: "", password: "" });
+  const [authError, setAuthError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [currentOrder, setCurrentOrder] = useState(null);
+  const [riderPos, setRiderPos] = useState({ x: 30, y: 35 });
+  const [eta, setEta] = useState(12);
+  const [trackProgress, setTrackProgress] = useState(40);
+  const trackRef = useRef(null);
 
   useEffect(() => {
-    if (view === VIEWS.TRACK) {
-      animRef.current = setInterval(() => {
-        setRiderDot(p => ({ x: p.x + (Math.random() - 0.4) * 1.2, y: p.y + (Math.random() - 0.3) * 1.2 }));
-        setProgress(p => Math.min(p + 0.4, 98));
-        setEta(p => Math.max(p - 0.05, 1));
-        setPulseMap(true);
-        setTimeout(() => setPulseMap(false), 400);
+    if (view === VIEWS.TRACKING) {
+      trackRef.current = setInterval(() => {
+        setRiderPos(p => ({ x: Math.min(p.x + 0.9, 68), y: Math.min(p.y + 0.6, 74) }));
+        setTrackProgress(p => Math.min(p + 0.5, 98));
+        setEta(p => Math.max(p - 0.1, 1));
       }, 1200);
     }
-    return () => clearInterval(animRef.current);
+    return () => clearInterval(trackRef.current);
   }, [view]);
 
-  const goBook = () => { setView(VIEWS.BOOK); setStep(1); };
-  const goTrack = () => setView(VIEWS.TRACK);
-  const goHome = () => { setView(VIEWS.HOME); setSelectedRider(null); setSelectedPackage(null); setPickupAddr(""); setDropAddr(""); };
+  const userFrom = (u) => ({
+    name: u.user_metadata?.name || u.email.split("@")[0],
+    email: u.email,
+    phone: u.user_metadata?.phone || "",
+  });
 
-  const confirmBooking = () => {
-    if (!selectedRider) setSelectedRider(riders[2]);
-    setView(VIEWS.CONFIRM);
-    setTimeout(() => setView(VIEWS.TRACK), 2200);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        setUser(userFrom(data.session.user));
+        setView(v => (v === VIEWS.LANDING ? VIEWS.DASHBOARD : v));
+      }
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      if (!session) setUser(null);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  const handleSignup = async () => {
+    if (!authForm.name || !authForm.email || !authForm.password || !authForm.phone) {
+      setAuthError("Please fill in all fields"); return;
+    }
+    if (authForm.password.length < 6) {
+      setAuthError("Password must be at least 6 characters"); return;
+    }
+    setLoading(true); setAuthError("");
+    const { data, error } = await supabase.auth.signUp({
+      email: authForm.email.trim(),
+      password: authForm.password,
+      options: { data: { name: authForm.name.trim(), phone: authForm.phone.trim() } },
+    });
+    setLoading(false);
+    if (error) { setAuthError(error.message); return; }
+    if (data.session) {
+      setUser(userFrom(data.user)); setView(VIEWS.DASHBOARD);
+    } else {
+      setAuthError("Account created. Check your email to confirm, then log in.");
+    }
   };
 
+  const handleLogin = async () => {
+    if (!authForm.email || !authForm.password) {
+      setAuthError("Please enter your email and password"); return;
+    }
+    setLoading(true); setAuthError("");
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: authForm.email.trim(),
+      password: authForm.password,
+    });
+    setLoading(false);
+    if (error) { setAuthError(error.message); return; }
+    setUser(userFrom(data.user)); setView(VIEWS.DASHBOARD);
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null); setView(VIEWS.LANDING);
+    setCurrentOrder(null); setSelectedRider(null);
+    setSelectedPackage(null); setPickup(""); setDropoff("");
+    setAuthForm({ name: "", email: "", phone: "", password: "" });
+  };
+
+  const handlePayment = () => {
+    const amount = (selectedRider?.price || 1500) + (selectedPackage?.basePrice || 500);
+    if (window.PaystackPop) {
+      const handler = window.PaystackPop.setup({
+        key: "YOUR_PAYSTACK_PUBLIC_KEY",
+        email: user?.email,
+        amount: amount * 100,
+        currency: "NGN",
+        ref: `SN-${Date.now()}`,
+        callback: (res) => completeOrder(amount, res.reference),
+        onClose: () => {},
+      });
+      handler.openIframe();
+    } else {
+      setTimeout(() => completeOrder(amount, `SN-REF-${Date.now()}`), 800);
+    }
+  };
+
+  const completeOrder = async (amount, ref) => {
+    const id = `SN${Math.floor(Math.random() * 90000) + 10000}`;
+    setCurrentOrder({
+      id,
+      rider: selectedRider, package: selectedPackage,
+      pickup, dropoff, amount, ref,
+      time: new Date().toLocaleTimeString(),
+    });
+    supabase.from("orders").insert({
+      id, rider_name: selectedRider?.name, package_label: selectedPackage?.label,
+      pickup, dropoff, amount, paystack_ref: ref,
+    }).then(({ error }) => { if (error) console.error("Order save failed:", error.message); });
+    setRiderPos({ x: 30, y: 35 });
+    setEta(12); setTrackProgress(40);
+    setView(VIEWS.TRACKING);
+  };
+
+  const totalAmount = (selectedRider?.price || 0) + (selectedPackage?.basePrice || 0);
+
   return (
-    <div style={styles.root}>
+    <div style={s.root}>
       <style>{css}</style>
 
-      {/* Top Nav */}
-      <nav style={styles.nav}>
-        <button onClick={goHome} style={styles.logo}>
-          <span style={styles.logoIcon}>⚡</span>
-          <span style={styles.logoText}>swiftly</span>
-        </button>
-        <div style={styles.navLinks}>
-          <button onClick={goHome} style={{ ...styles.navBtn, ...(view === VIEWS.HOME ? styles.navBtnActive : {}) }}>Home</button>
-          <button onClick={goBook} style={{ ...styles.navBtn, ...(view === VIEWS.BOOK ? styles.navBtnActive : {}) }}>Book</button>
-          <button onClick={goTrack} style={{ ...styles.navBtn, ...(view === VIEWS.TRACK ? styles.navBtnActive : {}) }}>Track</button>
-        </div>
-      </nav>
+      {/* ── LANDING ── */}
+      {view === VIEWS.LANDING && (
+        <div className="fade-in">
+          <div style={s.landingBg} />
+          <nav style={s.landingNav}>
+            <div>
+              <div style={s.logoRow}>
+                <span style={s.logoEmoji}>🚀</span>
+                <span style={s.logoText}>Swift<span style={s.gold}>Naija</span></span>
+              </div>
+              <div style={s.logoSub}>A sub-company by Daniel Effanga Group</div>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button style={s.btnOutline} onClick={() => { setAuthError(""); setView(VIEWS.LOGIN); }}>Log In</button>
+              <button style={s.btnGold} onClick={() => { setAuthError(""); setView(VIEWS.SIGNUP); }}>Sign Up</button>
+            </div>
+          </nav>
 
-      <main style={styles.main}>
-
-        {/* ── HOME ── */}
-        {view === VIEWS.HOME && (
-          <div className="fade-in" style={styles.homeWrap}>
-            <div style={styles.heroBadge}>🛵 Lagos · Abuja · Port Harcourt</div>
-            <h1 style={styles.heroTitle}>
-              Deliver anything.<br /><span style={styles.heroAccent}>Anywhere. Now.</span>
-            </h1>
-            <p style={styles.heroSub}>Connect with trusted local riders for same-day delivery. Track every move, every mile.</p>
-            <div style={styles.heroActions}>
-              <button onClick={goBook} style={styles.btnPrimary} className="btn-hover">
-                Book a Rider →
+          <div style={s.hero}>
+            <div style={s.heroBadge}>🇳🇬 Lagos · Abuja · Port Harcourt · Kano</div>
+            <h1 style={s.heroTitle}>Nigeria's Fastest<br /><span style={s.gold}>Delivery Platform</span></h1>
+            <p style={s.heroSub}>Connect with verified local riders. Book in seconds, track in real-time, and pay securely with Paystack.</p>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
+              <button style={s.btnGoldLg} className="btn-pop" onClick={() => { setAuthError(""); setView(VIEWS.SIGNUP); }}>
+                Get Started Free →
               </button>
-              <button onClick={goTrack} style={styles.btnSecondary} className="btn-hover">
-                Track Order
+              <button style={s.btnOutlineLg} onClick={() => { setAuthError(""); setView(VIEWS.LOGIN); }}>
+                I have an account
               </button>
-            </div>
-
-            {/* Stats row */}
-            <div style={styles.statsRow}>
-              {[["2,400+", "Verified Riders"], ["98%", "On-time Rate"], ["4.9★", "Avg Rating"], ["< 30min", "Avg Delivery"]].map(([val, lbl]) => (
-                <div key={lbl} style={styles.statCard}>
-                  <div style={styles.statVal}>{val}</div>
-                  <div style={styles.statLbl}>{lbl}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Rider cards preview */}
-            <div style={styles.sectionHeader}>
-              <span style={styles.sectionTitle}>Available Riders Nearby</span>
-              <button onClick={goBook} style={styles.seeAll}>View All →</button>
-            </div>
-            <div style={styles.riderScroll}>
-              {riders.filter(r => r.status === "available").map(r => (
-                <div key={r.id} style={styles.riderPreviewCard} className="card-hover" onClick={() => { setSelectedRider(r); goBook(); setStep(3); }}>
-                  <div style={{ ...styles.avatar, background: avatarColor(r.id) }}>{r.avatar}</div>
-                  <div style={styles.riderPreviewInfo}>
-                    <div style={styles.riderName}>{r.name}</div>
-                    <div style={styles.riderMeta}>{r.bike} · {r.eta} away</div>
-                    <div style={styles.riderRating}>{"★".repeat(5)} <span style={styles.ratingNum}>{r.rating}</span></div>
-                  </div>
-                  <div style={styles.etaBadge}>{r.eta}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* How it works */}
-            <div style={styles.sectionHeader}><span style={styles.sectionTitle}>How It Works</span></div>
-            <div style={styles.howRow}>
-              {[["1", "📍", "Set pickup & drop-off"], ["2", "🏍", "Choose your rider"], ["3", "📦", "Track in real-time"]].map(([n, icon, txt]) => (
-                <div key={n} style={styles.howCard}>
-                  <div style={styles.howNum}>{n}</div>
-                  <div style={styles.howIcon}>{icon}</div>
-                  <div style={styles.howTxt}>{txt}</div>
-                </div>
-              ))}
             </div>
           </div>
-        )}
 
-        {/* ── BOOK ── */}
-        {view === VIEWS.BOOK && (
-          <div className="fade-in" style={styles.bookWrap}>
-            <div style={styles.bookHeader}>
-              <button onClick={goHome} style={styles.backBtn}>← Back</button>
-              <h2 style={styles.bookTitle}>Book a Delivery</h2>
+          <div style={s.statsRow}>
+            {[["5,000+", "Verified Riders"], ["₦2M+", "Delivered Daily"], ["98%", "On-time Rate"], ["4.9★", "Avg Rating"]].map(([v, l]) => (
+              <div key={l} style={s.statCard}>
+                <div style={s.statVal}>{v}</div>
+                <div style={s.statLbl}>{l}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={s.featRow}>
+            {[
+              ["📍", "Real-Time Tracking", "Watch your package move live on the map with live ETA updates"],
+              ["💳", "Secure Payments", "Pay safely with Paystack — cards, bank transfer, USSD"],
+              ["🏍", "Verified Riders", "Every rider is background-checked and rated by customers"],
+              ["⚡", "Instant Booking", "Book a rider in under 60 seconds, anytime, anywhere"],
+            ].map(([icon, title, desc]) => (
+              <div key={title} style={s.featCard} className="card-hover">
+                <div style={s.featIcon}>{icon}</div>
+                <div style={s.featTitle}>{title}</div>
+                <div style={s.featDesc}>{desc}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={s.footer}>
+            <div style={s.footerLogo}>🚀 SwiftNaija</div>
+            <div style={s.footerSub}>A sub-company by Daniel Effanga Group</div>
+            <div style={s.footerLinks}>© 2026 Daniel Effanga Group · All rights reserved</div>
+          </div>
+        </div>
+      )}
+
+      {/* ── SIGN UP ── */}
+      {view === VIEWS.SIGNUP && (
+        <div style={s.authPage} className="fade-in">
+          <div style={s.authCard}>
+            <div style={s.authLogoRow}>
+              <span style={s.logoEmoji}>🚀</span>
+              <div>
+                <div style={s.logoText}>Swift<span style={s.gold}>Naija</span></div>
+                <div style={s.logoSub}>A sub-company by Daniel Effanga Group</div>
+              </div>
+            </div>
+            <h2 style={s.authTitle}>Create Your Account</h2>
+            <p style={s.authSub}>Join thousands of Nigerians using SwiftNaija</p>
+
+            {authError && <div style={s.errorBox}>⚠️ {authError}</div>}
+
+            {[
+              ["Full Name", "text", "e.g. Emeka Okafor", "name"],
+              ["Email Address", "email", "you@email.com", "email"],
+              ["Phone Number", "tel", "080XXXXXXXX", "phone"],
+              ["Password", "password", "Min. 6 characters", "password"],
+            ].map(([label, type, placeholder, key]) => (
+              <div key={key} style={s.inputGroup}>
+                <label style={s.label}>{label}</label>
+                <input style={s.input} type={type} placeholder={placeholder}
+                  value={authForm[key]} onChange={e => setAuthForm({ ...authForm, [key]: e.target.value })} />
+              </div>
+            ))}
+
+            <button style={{ ...s.btnGoldFull, opacity: loading ? 0.7 : 1 }}
+              onClick={handleSignup} disabled={loading} className="btn-pop">
+              {loading ? "Creating account..." : "Create Account →"}
+            </button>
+            <p style={s.authSwitch}>
+              Already have an account?{" "}
+              <button style={s.linkBtn} onClick={() => { setAuthError(""); setView(VIEWS.LOGIN); }}>Log in</button>
+            </p>
+            <button style={s.backLink} onClick={() => setView(VIEWS.LANDING)}>← Back to home</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── LOGIN ── */}
+      {view === VIEWS.LOGIN && (
+        <div style={s.authPage} className="fade-in">
+          <div style={s.authCard}>
+            <div style={s.authLogoRow}>
+              <span style={s.logoEmoji}>🚀</span>
+              <div>
+                <div style={s.logoText}>Swift<span style={s.gold}>Naija</span></div>
+                <div style={s.logoSub}>A sub-company by Daniel Effanga Group</div>
+              </div>
+            </div>
+            <h2 style={s.authTitle}>Welcome Back</h2>
+            <p style={s.authSub}>Log in to your SwiftNaija account</p>
+
+            {authError && <div style={s.errorBox}>⚠️ {authError}</div>}
+
+            {[
+              ["Email Address", "email", "you@email.com", "email"],
+              ["Password", "password", "Your password", "password"],
+            ].map(([label, type, placeholder, key]) => (
+              <div key={key} style={s.inputGroup}>
+                <label style={s.label}>{label}</label>
+                <input style={s.input} type={type} placeholder={placeholder}
+                  value={authForm[key]} onChange={e => setAuthForm({ ...authForm, [key]: e.target.value })} />
+              </div>
+            ))}
+
+            <button style={{ ...s.btnGoldFull, opacity: loading ? 0.7 : 1 }}
+              onClick={handleLogin} disabled={loading} className="btn-pop">
+              {loading ? "Logging in..." : "Log In →"}
+            </button>
+            <p style={s.authSwitch}>
+              Don't have an account?{" "}
+              <button style={s.linkBtn} onClick={() => { setAuthError(""); setView(VIEWS.SIGNUP); }}>Sign up free</button>
+            </p>
+            <button style={s.backLink} onClick={() => setView(VIEWS.LANDING)}>← Back to home</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── DASHBOARD ── */}
+      {view === VIEWS.DASHBOARD && user && (
+        <div className="fade-in">
+          <nav style={s.nav}>
+            <div>
+              <div style={s.logoRow}>
+                <span style={{ fontSize: 20 }}>🚀</span>
+                <span style={{ ...s.logoText, fontSize: 18 }}>Swift<span style={s.gold}>Naija</span></span>
+              </div>
+              <div style={{ ...s.logoSub, fontSize: 10 }}>Daniel Effanga Group</div>
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {currentOrder && (
+                <button style={s.liveBadge} onClick={() => setView(VIEWS.TRACKING)}>● LIVE</button>
+              )}
+              <button style={s.navIconBtn} onClick={() => setView(VIEWS.PROFILE)}>👤</button>
+            </div>
+          </nav>
+
+          <div style={s.main}>
+            <div style={s.welcomeCard}>
+              <div>
+                <div style={s.welcomeHi}>Good day, {user.name.split(" ")[0]}! 👋</div>
+                <div style={s.welcomeSub}>Where are you sending today?</div>
+              </div>
+              <span style={{ fontSize: 40 }}>🚀</span>
             </div>
 
-            {/* Progress steps */}
-            <div style={styles.stepRow}>
-              {["Addresses", "Package", "Rider"].map((s, i) => (
-                <div key={s} style={styles.stepItem}>
-                  <div style={{ ...styles.stepDot, ...(step > i + 1 ? styles.stepDone : step === i + 1 ? styles.stepActive : {}) }}>
-                    {step > i + 1 ? "✓" : i + 1}
+            <button style={s.bookBigBtn} className="btn-pop"
+              onClick={() => { setView(VIEWS.BOOK); setBookingStep(1); }}>
+              + Book a Delivery
+            </button>
+
+            {currentOrder && (
+              <div style={s.activeOrderCard} onClick={() => setView(VIEWS.TRACKING)} className="card-hover">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <span style={s.liveTag}>● LIVE ORDER</span>
+                  <span style={{ color: "#D4A017", fontWeight: 700 }}>#{currentOrder.id}</span>
+                </div>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>{currentOrder.rider?.name} is on the way</div>
+                <div style={{ color: "#9CA3AF", fontSize: 13 }}>ETA ~{Math.ceil(eta)} min · Tap to track live →</div>
+              </div>
+            )}
+
+            <div style={s.sectionHdr}>
+              <span style={s.sectionTitle}>Available Riders Near You</span>
+            </div>
+
+            {riders.filter(r => r.status === "available").map(r => (
+              <div key={r.id} style={s.riderRow} className="card-hover"
+                onClick={() => { setSelectedRider(r); setView(VIEWS.BOOK); setBookingStep(3); }}>
+                <div style={{ ...s.avatar, background: avatarColor(r.id) }}>{r.avatar}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={s.riderName}>{r.name}</div>
+                  <div style={s.riderMeta}>{r.bike} · {r.distance} · ★ {r.rating}</div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={s.etaTag}>{r.eta}</div>
+                  <div style={s.priceTag}>₦{r.price.toLocaleString()}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── BOOK ── */}
+      {view === VIEWS.BOOK && (
+        <div className="fade-in">
+          <nav style={s.nav}>
+            <button style={s.backBtn} onClick={() => setView(VIEWS.DASHBOARD)}>← Back</button>
+            <div style={s.navTitle}>Book Delivery</div>
+            <div />
+          </nav>
+          <div style={s.main}>
+            <div style={s.stepRow}>
+              {["Address", "Package", "Rider"].map((label, i) => (
+                <div key={label} style={s.stepItem}>
+                  <div style={{ ...s.stepDot, ...(bookingStep > i + 1 ? s.stepDone : bookingStep === i + 1 ? s.stepActive : {}) }}>
+                    {bookingStep > i + 1 ? "✓" : i + 1}
                   </div>
-                  <span style={{ ...styles.stepLabel, ...(step === i + 1 ? { color: "#f5a623" } : {}) }}>{s}</span>
-                  {i < 2 && <div style={{ ...styles.stepLine, ...(step > i + 1 ? { background: "#f5a623" } : {}) }} />}
+                  <span style={{ ...s.stepLabel, ...(bookingStep === i + 1 ? { color: "#D4A017" } : {}) }}>{label}</span>
+                  {i < 2 && <div style={{ ...s.stepLine, ...(bookingStep > i + 1 ? { background: "#D4A017" } : {}) }} />}
                 </div>
               ))}
             </div>
 
-            {/* Step 1: Addresses */}
-            {step === 1 && (
-              <div style={styles.stepContent} className="fade-in">
-                <div style={styles.inputGroup}>
-                  <label style={styles.label}>📍 Pickup Address</label>
-                  <input style={styles.input} placeholder="Enter pickup location..." value={pickupAddr} onChange={e => setPickupAddr(e.target.value)} />
+            {bookingStep === 1 && (
+              <div className="fade-in">
+                <div style={s.inputGroup}>
+                  <label style={s.label}>📍 Pickup Address</label>
+                  <input style={s.input} placeholder="Where should the rider pick up?" value={pickup}
+                    onChange={e => setPickup(e.target.value)} />
                 </div>
-                <div style={styles.inputGroup}>
-                  <label style={styles.label}>🏁 Drop-off Address</label>
-                  <input style={styles.input} placeholder="Enter destination..." value={dropAddr} onChange={e => setDropAddr(e.target.value)} />
-                </div>
-                <div style={styles.quickAddrs}>
-                  {["Victoria Island, Lagos", "Lekki Phase 1", "Ikeja GRA", "Surulere"].map(addr => (
-                    <button key={addr} style={styles.quickAddr} onClick={() => setDropAddr(addr)}>{addr}</button>
+                <div style={s.quickAddrs}>
+                  {["Victoria Island, Lagos", "Lekki Phase 1", "Ikeja GRA", "Surulere", "Wuse 2, Abuja", "Garki, Abuja"].map(a => (
+                    <button key={a} style={s.quickChip} onClick={() => setPickup(a)}>{a}</button>
                   ))}
                 </div>
-                <button style={{ ...styles.btnPrimary, width: "100%", marginTop: 24 }}
-                  onClick={() => setStep(2)}
-                  disabled={!pickupAddr || !dropAddr}
-                  className="btn-hover">
+                <div style={{ ...s.inputGroup, marginTop: 20 }}>
+                  <label style={s.label}>🏁 Drop-off Address</label>
+                  <input style={s.input} placeholder="Where should it be delivered?" value={dropoff}
+                    onChange={e => setDropoff(e.target.value)} />
+                </div>
+                <button style={{ ...s.btnGoldFull, opacity: (!pickup || !dropoff) ? 0.5 : 1, marginTop: 24 }}
+                  disabled={!pickup || !dropoff} onClick={() => setBookingStep(2)} className="btn-pop">
                   Continue →
                 </button>
               </div>
             )}
 
-            {/* Step 2: Package type */}
-            {step === 2 && (
-              <div style={styles.stepContent} className="fade-in">
-                <p style={styles.stepSubtitle}>What are you sending?</p>
-                <div style={styles.packageGrid}>
+            {bookingStep === 2 && (
+              <div className="fade-in">
+                <p style={{ color: "#9CA3AF", marginBottom: 16 }}>What are you sending?</p>
+                <div style={s.pkgGrid}>
                   {packageTypes.map(pkg => (
                     <button key={pkg.id}
-                      style={{ ...styles.packageCard, ...(selectedPackage?.id === pkg.id ? styles.packageCardActive : {}) }}
-                      onClick={() => setSelectedPackage(pkg)}
-                      className="card-hover">
-                      <div style={styles.packageIcon}>{pkg.icon}</div>
-                      <div style={styles.packageLabel}>{pkg.label}</div>
-                      <div style={styles.packageDesc}>{pkg.desc}</div>
+                      style={{ ...s.pkgCard, ...(selectedPackage?.id === pkg.id ? s.pkgActive : {}) }}
+                      onClick={() => setSelectedPackage(pkg)} className="card-hover">
+                      <div style={{ fontSize: 30, marginBottom: 8 }}>{pkg.icon}</div>
+                      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{pkg.label}</div>
+                      <div style={{ color: "#6B7280", fontSize: 12, marginBottom: 8 }}>{pkg.desc}</div>
+                      <div style={{ color: "#D4A017", fontWeight: 700, fontSize: 13 }}>+₦{pkg.basePrice.toLocaleString()}</div>
                     </button>
                   ))}
                 </div>
-                <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
-                  <button style={{ ...styles.btnSecondary, flex: 1 }} onClick={() => setStep(1)}>← Back</button>
-                  <button style={{ ...styles.btnPrimary, flex: 2 }} onClick={() => setStep(3)} disabled={!selectedPackage} className="btn-hover">Find Riders →</button>
+                <div style={{ display: "flex", gap: 12, marginTop: 20 }}>
+                  <button style={{ ...s.btnOutlineFull, flex: 1 }} onClick={() => setBookingStep(1)}>← Back</button>
+                  <button style={{ ...s.btnGoldFull, flex: 2, opacity: !selectedPackage ? 0.5 : 1 }}
+                    disabled={!selectedPackage} onClick={() => setBookingStep(3)} className="btn-pop">
+                    Find Riders →
+                  </button>
                 </div>
               </div>
             )}
 
-            {/* Step 3: Choose rider */}
-            {step === 3 && (
-              <div style={styles.stepContent} className="fade-in">
-                <p style={styles.stepSubtitle}>Select your rider</p>
-                <div style={styles.riderList}>
-                  {riders.map(r => (
-                    <div key={r.id}
-                      style={{ ...styles.riderCard, ...(selectedRider?.id === r.id ? styles.riderCardActive : {}), ...(r.status === "busy" ? styles.riderBusy : {}) }}
-                      onClick={() => r.status === "available" && setSelectedRider(r)}
-                      className={r.status === "available" ? "card-hover" : ""}>
-                      <div style={{ ...styles.avatar, background: avatarColor(r.id) }}>{r.avatar}</div>
-                      <div style={styles.riderInfo}>
-                        <div style={styles.riderNameBig}>{r.name}
-                          {r.status === "busy" && <span style={styles.busyTag}> Busy</span>}
-                        </div>
-                        <div style={styles.riderSubInfo}>{r.bike} · {r.trips.toLocaleString()} trips · ★ {r.rating}</div>
-                        <div style={styles.riderDist}>{r.distance} away · ETA {r.eta}</div>
+            {bookingStep === 3 && (
+              <div className="fade-in">
+                <p style={{ color: "#9CA3AF", marginBottom: 16 }}>Choose your rider</p>
+                {riders.map(r => (
+                  <div key={r.id}
+                    style={{ ...s.riderRowFull, ...(selectedRider?.id === r.id ? s.riderSelected : {}), ...(r.status === "busy" ? { opacity: 0.4 } : {}) }}
+                    onClick={() => r.status === "available" && setSelectedRider(r)}
+                    className={r.status === "available" ? "card-hover" : ""}>
+                    <div style={{ ...s.avatar, background: avatarColor(r.id) }}>{r.avatar}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={s.riderName}>
+                        {r.name} {r.status === "busy" && <span style={{ color: "#EF4444", fontSize: 11 }}>Busy</span>}
                       </div>
-                      {selectedRider?.id === r.id && <div style={styles.checkMark}>✓</div>}
+                      <div style={s.riderMeta}>{r.bike} · {r.trips.toLocaleString()} trips · ★ {r.rating}</div>
+                      <div style={{ color: "#D4A017", fontSize: 12, marginTop: 2 }}>{r.distance} · ETA {r.eta}</div>
                     </div>
-                  ))}
-                </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ color: "#F3F4F6", fontWeight: 800, fontSize: 15 }}>₦{r.price.toLocaleString()}</div>
+                      {selectedRider?.id === r.id && <div style={s.checkCircle}>✓</div>}
+                    </div>
+                  </div>
+                ))}
+
+                {selectedRider && selectedPackage && (
+                  <div style={s.summaryBox}>
+                    <div style={s.sumRow}><span>Rider fee</span><span>₦{selectedRider.price.toLocaleString()}</span></div>
+                    <div style={s.sumRow}><span>Package handling</span><span>₦{selectedPackage.basePrice.toLocaleString()}</span></div>
+                    <div style={{ ...s.sumRow, fontWeight: 800, color: "#D4A017", fontSize: 17, marginTop: 8, borderTop: "1px solid #1E293B", paddingTop: 12 }}>
+                      <span>Total</span><span>₦{totalAmount.toLocaleString()}</span>
+                    </div>
+                  </div>
+                )}
+
                 <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
-                  <button style={{ ...styles.btnSecondary, flex: 1 }} onClick={() => setStep(2)}>← Back</button>
-                  <button style={{ ...styles.btnPrimary, flex: 2 }} onClick={confirmBooking} disabled={!selectedRider} className="btn-hover">Confirm Booking →</button>
+                  <button style={{ ...s.btnOutlineFull, flex: 1 }} onClick={() => setBookingStep(2)}>← Back</button>
+                  <button style={{ ...s.btnGoldFull, flex: 2, opacity: !selectedRider ? 0.5 : 1 }}
+                    disabled={!selectedRider} onClick={() => setView(VIEWS.PAYMENT)} className="btn-pop">
+                    Pay ₦{totalAmount.toLocaleString()} →
+                  </button>
                 </div>
               </div>
             )}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* ── CONFIRM ── */}
-        {view === VIEWS.CONFIRM && (
-          <div className="fade-in" style={styles.confirmWrap}>
-            <div style={styles.confirmIcon} className="pop-in">✅</div>
-            <h2 style={styles.confirmTitle}>Booking Confirmed!</h2>
-            <p style={styles.confirmSub}>Your rider is on the way. Redirecting to tracking…</p>
-            <div style={styles.confirmSpinner}><div className="spinner" /></div>
-          </div>
-        )}
+      {/* ── PAYMENT ── */}
+      {view === VIEWS.PAYMENT && (
+        <div className="fade-in">
+          <nav style={s.nav}>
+            <button style={s.backBtn} onClick={() => setView(VIEWS.BOOK)}>← Back</button>
+            <div style={s.navTitle}>Secure Payment</div>
+            <div />
+          </nav>
+          <div style={s.main}>
+            <div style={s.payCard}>
+              <div style={{ fontSize: 48, textAlign: "center", marginBottom: 16 }}>💳</div>
+              <h2 style={{ textAlign: "center", fontWeight: 800, marginBottom: 24, fontSize: 20 }}>Order Summary</h2>
 
-        {/* ── TRACK ── */}
-        {view === VIEWS.TRACK && (
-          <div className="fade-in" style={styles.trackWrap}>
-            <div style={styles.bookHeader}>
-              <button onClick={goHome} style={styles.backBtn}>← Home</button>
-              <h2 style={styles.bookTitle}>Live Tracking</h2>
+              <div style={s.summaryBox}>
+                <div style={s.sumRow}>
+                  <span style={{ color: "#9CA3AF" }}>Pickup</span>
+                  <span style={{ color: "#D4A017", fontSize: 13, textAlign: "right", maxWidth: 200 }}>{pickup}</span>
+                </div>
+                <div style={s.sumRow}>
+                  <span style={{ color: "#9CA3AF" }}>Drop-off</span>
+                  <span style={{ color: "#D4A017", fontSize: 13, textAlign: "right", maxWidth: 200 }}>{dropoff}</span>
+                </div>
+                <div style={s.sumRow}><span style={{ color: "#9CA3AF" }}>Rider</span><span>{selectedRider?.name}</span></div>
+                <div style={s.sumRow}><span style={{ color: "#9CA3AF" }}>Package</span><span>{selectedPackage?.label}</span></div>
+                <div style={s.sumRow}><span style={{ color: "#9CA3AF" }}>Rider fee</span><span>₦{selectedRider?.price.toLocaleString()}</span></div>
+                <div style={s.sumRow}><span style={{ color: "#9CA3AF" }}>Handling</span><span>₦{selectedPackage?.basePrice.toLocaleString()}</span></div>
+                <div style={{ ...s.sumRow, fontWeight: 900, color: "#D4A017", fontSize: 20, borderTop: "1px solid #1E293B", paddingTop: 14, marginTop: 8 }}>
+                  <span>Total</span><span>₦{totalAmount.toLocaleString()}</span>
+                </div>
+              </div>
+
+              <div style={s.paystackBadge}>🔒 Secured by Paystack</div>
+              <div style={s.payMethods}>Cards · Bank Transfer · USSD · Mobile Money</div>
+
+              <button style={s.paystackBtn} onClick={handlePayment} className="btn-pop">
+                Pay ₦{totalAmount.toLocaleString()} with Paystack →
+              </button>
+
+              <div style={{ textAlign: "center", color: "#6B7280", fontSize: 12, marginTop: 12 }}>
+                SwiftNaija · A sub-company by Daniel Effanga Group
+              </div>
             </div>
+          </div>
+        </div>
+      )}
 
-            {/* Map mockup */}
-            <div style={{ ...styles.mapBox, ...(pulseMap ? styles.mapPulse : {}) }}>
-              <div style={styles.mapGrid} />
-              {/* Roads */}
-              <svg style={styles.mapSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
-                <line x1="0" y1="50" x2="100" y2="50" stroke="#334155" strokeWidth="1.5" />
-                <line x1="50" y1="0" x2="50" y2="100" stroke="#334155" strokeWidth="1.5" />
-                <line x1="0" y1="30" x2="100" y2="70" stroke="#1e293b" strokeWidth="1" />
-                <line x1="20" y1="0" x2="80" y2="100" stroke="#1e293b" strokeWidth="0.8" />
-                {/* Route line */}
-                <polyline points={`${riderDot.x},${riderDot.y} 72,78`} stroke="#f5a623" strokeWidth="2" strokeDasharray="3,2" fill="none" />
+      {/* ── TRACKING ── */}
+      {view === VIEWS.TRACKING && (
+        <div className="fade-in">
+          <nav style={s.nav}>
+            <button style={s.backBtn} onClick={() => setView(VIEWS.DASHBOARD)}>← Home</button>
+            <div style={s.navTitle}>Live Tracking</div>
+            <div style={{ color: "#22C55E", fontSize: 13, fontWeight: 700 }}>● LIVE</div>
+          </nav>
+          <div style={s.main}>
+            {currentOrder && (
+              <div style={s.orderIdBar}>
+                Order <span style={{ color: "#D4A017" }}>#{currentOrder.id}</span>
+                {" "}· Paid <span style={{ color: "#22C55E" }}>₦{currentOrder.amount?.toLocaleString()}</span>
+              </div>
+            )}
+
+            {/* Live Map */}
+            <div style={s.mapBox}>
+              <div style={s.mapGrid} />
+              <svg style={s.mapSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
+                <line x1="0" y1="50" x2="100" y2="50" stroke="#1E3A5F" strokeWidth="2" />
+                <line x1="50" y1="0" x2="50" y2="100" stroke="#1E3A5F" strokeWidth="2" />
+                <line x1="0" y1="30" x2="100" y2="70" stroke="#162D44" strokeWidth="1.5" />
+                <line x1="20" y1="0" x2="80" y2="100" stroke="#162D44" strokeWidth="1" />
+                <polyline points={`${riderPos.x},${riderPos.y} 72,78`} stroke="#D4A017" strokeWidth="2.5" strokeDasharray="4,3" fill="none" />
               </svg>
-              {/* Rider marker */}
-              <div style={{ ...styles.mapRider, left: `${riderDot.x}%`, top: `${riderDot.y}%` }} className="rider-pulse">🏍</div>
-              {/* Destination */}
-              <div style={styles.mapDest}>📍</div>
-              {/* You */}
-              <div style={styles.mapYou}>🏠</div>
-              {/* ETA overlay */}
-              <div style={styles.mapEta}>ETA: ~{Math.ceil(eta)} min</div>
+              <div style={{ ...s.mapRider, left: `${riderPos.x}%`, top: `${riderPos.y}%` }} className="rider-pulse">🏍</div>
+              <div style={s.mapDest}>📍</div>
+              <div style={s.mapHome}>🏠</div>
+              <div style={s.mapEtaChip}>ETA ~{Math.ceil(eta)} min</div>
             </div>
 
             {/* Progress bar */}
-            <div style={styles.progressWrap}>
-              <div style={styles.progressBar}>
-                <div style={{ ...styles.progressFill, width: `${progress}%` }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
+              <div style={{ flex: 1, height: 8, background: "#1E293B", borderRadius: 4, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${trackProgress}%`, background: "linear-gradient(90deg,#D4A017,#F59E0B)", borderRadius: 4, transition: "width 1s ease" }} />
               </div>
-              <span style={styles.progressPct}>{Math.round(progress)}%</span>
+              <span style={{ color: "#D4A017", fontWeight: 700, fontSize: 13 }}>{Math.round(trackProgress)}%</span>
             </div>
 
             {/* Timeline */}
-            <div style={styles.timeline}>
-              {trackStages.map((stage, i) => (
-                <div key={stage.id} style={styles.timelineItem}>
-                  <div style={{ ...styles.timelineDot, ...(stage.done ? styles.timelineDone : stage.active ? styles.timelineActive : styles.timelinePending) }}>
-                    {stage.done ? "✓" : stage.icon}
+            <div style={{ marginBottom: 24 }}>
+              {trackStages.map((stage, i) => {
+                const done = i < 3;
+                const active = !!stage.active;
+                return (
+                  <div key={stage.id} style={{ display: "flex", alignItems: "flex-start", gap: 14, position: "relative", paddingBottom: 16 }}>
+                    <div style={{ ...s.tlDot, ...(done ? s.tlDone : active ? s.tlActive : s.tlPending) }}>
+                      {done ? "✓" : stage.icon}
+                    </div>
+                    <div style={{ flex: 1, paddingTop: 5 }}>
+                      <div style={{ fontSize: 14, fontWeight: active ? 700 : 500, color: active ? "#D4A017" : done ? "#6B7280" : "#9CA3AF" }}>
+                        {stage.label} {active && <span style={{ fontSize: 11, color: "#22C55E" }}>● Live</span>}
+                      </div>
+                      {stage.time && <div style={{ fontSize: 12, color: "#4B5563", marginTop: 2 }}>{stage.time}</div>}
+                    </div>
+                    {i < trackStages.length - 1 && (
+                      <div style={{ position: "absolute", left: 15, top: 32, width: 2, height: "calc(100% - 16px)", background: done ? "#D4A017" : "#1E293B", transform: "translateX(-50%)" }} />
+                    )}
                   </div>
-                  <div style={{ ...styles.timelineLabel, ...(stage.active ? { color: "#f5a623", fontWeight: 700 } : stage.done ? { color: "#94a3b8" } : {}) }}>
-                    {stage.label}
-                    {stage.active && <span style={styles.activePing}> ● Live</span>}
-                  </div>
-                  {i < trackStages.length - 1 && <div style={{ ...styles.timelineConnector, ...(stage.done ? { background: "#f5a623" } : {}) }} />}
-                </div>
+                );
+              })}
+            </div>
+
+            {/* Rider card */}
+            <div style={s.riderInfoCard}>
+              <div style={{ ...s.avatar, background: avatarColor(currentOrder?.rider?.id || 3), width: 52, height: 52, fontSize: 17 }}>
+                {currentOrder?.rider?.avatar || "CK"}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={s.riderName}>{currentOrder?.rider?.name || "Chukwudi K."}</div>
+                <div style={s.riderMeta}>★ {currentOrder?.rider?.rating || "4.95"} · {(currentOrder?.rider?.trips || 2104).toLocaleString()} trips</div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button style={s.iconBtn}>📞</button>
+                <button style={s.iconBtn}>💬</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── PROFILE ── */}
+      {view === VIEWS.PROFILE && user && (
+        <div className="fade-in">
+          <nav style={s.nav}>
+            <button style={s.backBtn} onClick={() => setView(VIEWS.DASHBOARD)}>← Back</button>
+            <div style={s.navTitle}>My Profile</div>
+            <div />
+          </nav>
+          <div style={s.main}>
+            <div style={s.profileCard}>
+              <div style={s.profileAvatar}>{user.name[0]}</div>
+              <div style={{ fontWeight: 800, fontSize: 20, marginBottom: 4 }}>{user.name}</div>
+              <div style={{ color: "#9CA3AF", fontSize: 14 }}>{user.email}</div>
+              <div style={{ color: "#9CA3AF", fontSize: 14 }}>{user.phone}</div>
+            </div>
+
+            <div style={{ marginTop: 24 }}>
+              {[
+                ["📦", "My Orders", () => currentOrder && setView(VIEWS.TRACKING)],
+                ["💳", "Payment Methods", () => {}],
+                ["🔔", "Notifications", () => {}],
+                ["❓", "Help & Support", () => {}],
+                ["🚪", "Log Out", handleLogout],
+              ].map(([icon, label, fn]) => (
+                <button key={label} style={s.menuItem} onClick={fn} className="card-hover">
+                  <span style={{ fontSize: 20 }}>{icon}</span>
+                  <span style={{ flex: 1, fontWeight: 600 }}>{label}</span>
+                  <span style={{ color: "#4B5563", fontSize: 18 }}>›</span>
+                </button>
               ))}
             </div>
 
-            {/* Rider info */}
-            <div style={styles.riderInfoCard}>
-              <div style={{ ...styles.avatar, background: avatarColor(3), width: 52, height: 52, fontSize: 18 }}>TK</div>
-              <div style={styles.riderDetails}>
-                <div style={styles.riderNameBig}>Tunde K.</div>
-                <div style={styles.riderSubInfo}>Motorcycle · ★ 4.95 · 2,104 trips</div>
-              </div>
-              <div style={styles.riderActions}>
-                <button style={styles.iconBtn} title="Call">📞</button>
-                <button style={styles.iconBtn} title="Message">💬</button>
-              </div>
+            <div style={{ textAlign: "center", color: "#4B5563", fontSize: 12, marginTop: 32 }}>
+              🚀 SwiftNaija · A sub-company by Daniel Effanga Group
             </div>
-
-            <button onClick={goHome} style={{ ...styles.btnSecondary, width: "100%", marginTop: 16 }}>← Back to Home</button>
           </div>
-        )}
-      </main>
+        </div>
+      )}
     </div>
   );
 }
 
 function avatarColor(id) {
-  const colors = ["#e85d04", "#7209b7", "#0077b6", "#2dc653"];
-  return colors[id % colors.length];
+  const c = ["#B45309", "#7C3AED", "#0369A1", "#065F46", "#9D174D"];
+  return c[(id || 0) % c.length];
 }
 
-const styles = {
-  root: { minHeight: "100vh", background: "#0a0f1e", fontFamily: "'DM Sans', 'Segoe UI', sans-serif", color: "#e2e8f0" },
-  nav: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 32px", borderBottom: "1px solid #1e293b", background: "#0a0f1eee", backdropFilter: "blur(12px)", position: "sticky", top: 0, zIndex: 100 },
-  logo: { display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer" },
-  logoIcon: { fontSize: 24 },
-  logoText: { fontSize: 22, fontWeight: 800, color: "#f5a623", letterSpacing: "-0.5px" },
-  navLinks: { display: "flex", gap: 4 },
-  navBtn: { background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: "8px 16px", borderRadius: 8, fontFamily: "inherit", fontSize: 15, fontWeight: 500, transition: "all 0.2s" },
-  navBtnActive: { color: "#f5a623", background: "#f5a62318" },
-  main: { maxWidth: 680, margin: "0 auto", padding: "32px 20px 80px" },
-
-  // Home
-  homeWrap: {},
-  heroBadge: { display: "inline-block", background: "#f5a62318", color: "#f5a623", border: "1px solid #f5a62330", borderRadius: 20, padding: "6px 16px", fontSize: 13, fontWeight: 600, marginBottom: 24, letterSpacing: 0.3 },
-  heroTitle: { fontSize: "clamp(2rem, 6vw, 3.2rem)", fontWeight: 900, lineHeight: 1.15, margin: "0 0 16px", letterSpacing: "-1px" },
-  heroAccent: { color: "#f5a623" },
-  heroSub: { color: "#94a3b8", fontSize: 17, maxWidth: 480, lineHeight: 1.6, marginBottom: 32 },
-  heroActions: { display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 40 },
-
-  statsRow: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 40 },
-  statCard: { background: "#111827", border: "1px solid #1e293b", borderRadius: 12, padding: "16px 12px", textAlign: "center" },
-  statVal: { fontSize: 20, fontWeight: 800, color: "#f5a623", marginBottom: 4 },
-  statLbl: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5 },
-
-  sectionHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
-  sectionTitle: { fontSize: 17, fontWeight: 700, color: "#e2e8f0" },
-  seeAll: { background: "none", border: "none", color: "#f5a623", cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 600 },
-
-  riderScroll: { display: "flex", flexDirection: "column", gap: 12, marginBottom: 40 },
-  riderPreviewCard: { display: "flex", alignItems: "center", gap: 16, background: "#111827", border: "1px solid #1e293b", borderRadius: 14, padding: "14px 16px", cursor: "pointer", transition: "all 0.2s" },
-  avatar: { width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 15, color: "#fff", flexShrink: 0 },
-  riderPreviewInfo: { flex: 1 },
-  riderName: { fontWeight: 700, fontSize: 15, marginBottom: 2 },
-  riderMeta: { color: "#64748b", fontSize: 13 },
-  riderRating: { color: "#f5a623", fontSize: 12, marginTop: 2 },
-  ratingNum: { color: "#94a3b8" },
-  etaBadge: { background: "#f5a62318", color: "#f5a623", border: "1px solid #f5a62330", borderRadius: 8, padding: "4px 10px", fontSize: 13, fontWeight: 700 },
-
-  howRow: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 40 },
-  howCard: { background: "#111827", border: "1px solid #1e293b", borderRadius: 14, padding: 20, textAlign: "center" },
-  howNum: { width: 28, height: 28, borderRadius: "50%", background: "#f5a623", color: "#0a0f1e", fontWeight: 800, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 10px" },
-  howIcon: { fontSize: 24, marginBottom: 8 },
-  howTxt: { color: "#94a3b8", fontSize: 13, lineHeight: 1.4 },
+const s = {
+  root: { minHeight: "100vh", background: "#0B0F1A", fontFamily: "'Sora','DM Sans',sans-serif", color: "#F3F4F6" },
+  landingBg: { position: "fixed", inset: 0, background: "radial-gradient(ellipse at 20% 50%,#1a2744 0%,#0B0F1A 60%)", zIndex: 0 },
+  landingNav: { position: "relative", zIndex: 1, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 24px", borderBottom: "1px solid #1E293B" },
+  logoRow: { display: "flex", alignItems: "center", gap: 8 },
+  logoEmoji: { fontSize: 24 },
+  logoText: { fontSize: 20, fontWeight: 900, color: "#F3F4F6", letterSpacing: "-0.5px" },
+  logoSub: { fontSize: 11, color: "#6B7280", marginTop: 2 },
+  gold: { color: "#D4A017" },
+  hero: { position: "relative", zIndex: 1, textAlign: "center", padding: "56px 24px 40px", maxWidth: 600, margin: "0 auto" },
+  heroBadge: { display: "inline-block", background: "#1E293B", border: "1px solid #D4A01740", color: "#D4A017", borderRadius: 20, padding: "6px 16px", fontSize: 13, fontWeight: 600, marginBottom: 20 },
+  heroTitle: { fontSize: "clamp(1.8rem,7vw,3.2rem)", fontWeight: 900, lineHeight: 1.15, margin: "0 0 16px", letterSpacing: "-1px" },
+  heroSub: { color: "#9CA3AF", fontSize: 15, lineHeight: 1.7, marginBottom: 32 },
+  statsRow: { position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, padding: "0 20px 36px", maxWidth: 680, margin: "0 auto" },
+  statCard: { background: "#111827", border: "1px solid #1E293B", borderRadius: 12, padding: "14px 8px", textAlign: "center" },
+  statVal: { fontSize: 18, fontWeight: 800, color: "#D4A017", marginBottom: 4 },
+  statLbl: { fontSize: 10, color: "#6B7280", textTransform: "uppercase", letterSpacing: 0.5 },
+  featRow: { position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 12, padding: "0 20px 40px", maxWidth: 680, margin: "0 auto" },
+  featCard: { background: "#111827", border: "1px solid #1E293B", borderRadius: 14, padding: 18, transition: "all 0.2s", cursor: "pointer" },
+  featIcon: { fontSize: 26, marginBottom: 10 },
+  featTitle: { fontWeight: 700, fontSize: 14, marginBottom: 6 },
+  featDesc: { color: "#6B7280", fontSize: 12, lineHeight: 1.5 },
+  footer: { position: "relative", zIndex: 1, textAlign: "center", padding: "32px 24px", borderTop: "1px solid #1E293B" },
+  footerLogo: { fontSize: 18, fontWeight: 800, marginBottom: 6 },
+  footerSub: { color: "#D4A017", fontSize: 13, marginBottom: 8 },
+  footerLinks: { color: "#4B5563", fontSize: 12 },
 
   // Buttons
-  btnPrimary: { background: "#f5a623", color: "#0a0f1e", border: "none", borderRadius: 12, padding: "14px 28px", fontSize: 15, fontWeight: 800, cursor: "pointer", transition: "all 0.2s", letterSpacing: 0.2 },
-  btnSecondary: { background: "transparent", color: "#e2e8f0", border: "1px solid #334155", borderRadius: 12, padding: "14px 28px", fontSize: 15, fontWeight: 600, cursor: "pointer", transition: "all 0.2s", fontFamily: "inherit" },
+  btnGold: { background: "#D4A017", color: "#0B0F1A", border: "none", borderRadius: 10, padding: "10px 20px", fontSize: 14, fontWeight: 800, cursor: "pointer" },
+  btnOutline: { background: "transparent", color: "#F3F4F6", border: "1px solid #374151", borderRadius: 10, padding: "10px 20px", fontSize: 14, fontWeight: 600, cursor: "pointer" },
+  btnGoldLg: { background: "#D4A017", color: "#0B0F1A", border: "none", borderRadius: 12, padding: "16px 32px", fontSize: 16, fontWeight: 800, cursor: "pointer" },
+  btnOutlineLg: { background: "transparent", color: "#F3F4F6", border: "1px solid #374151", borderRadius: 12, padding: "16px 32px", fontSize: 16, fontWeight: 600, cursor: "pointer" },
+  btnGoldFull: { width: "100%", background: "#D4A017", color: "#0B0F1A", border: "none", borderRadius: 12, padding: "16px", fontSize: 16, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" },
+  btnOutlineFull: { background: "transparent", color: "#F3F4F6", border: "1px solid #374151", borderRadius: 12, padding: "16px", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" },
 
-  // Book
-  bookWrap: {},
-  bookHeader: { display: "flex", alignItems: "center", gap: 16, marginBottom: 28 },
-  backBtn: { background: "none", border: "1px solid #1e293b", color: "#94a3b8", cursor: "pointer", borderRadius: 8, padding: "8px 14px", fontFamily: "inherit", fontSize: 14 },
-  bookTitle: { fontSize: 22, fontWeight: 800, margin: 0 },
-
-  stepRow: { display: "flex", alignItems: "center", marginBottom: 32, gap: 0 },
-  stepItem: { display: "flex", alignItems: "center", gap: 8, flex: 1, position: "relative" },
-  stepDot: { width: 32, height: 32, borderRadius: "50%", background: "#1e293b", border: "2px solid #334155", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, color: "#64748b", flexShrink: 0, zIndex: 1 },
-  stepActive: { background: "#f5a62318", border: "2px solid #f5a623", color: "#f5a623" },
-  stepDone: { background: "#f5a623", border: "2px solid #f5a623", color: "#0a0f1e" },
-  stepLabel: { fontSize: 12, color: "#64748b", fontWeight: 600, whiteSpace: "nowrap" },
-  stepLine: { position: "absolute", left: 40, right: -8, height: 2, background: "#1e293b", top: "50%", transform: "translateY(-50%)" },
-  stepContent: {},
-  stepSubtitle: { color: "#94a3b8", marginBottom: 20, fontSize: 15 },
-
+  // Auth
+  authPage: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: "#0B0F1A" },
+  authCard: { width: "100%", maxWidth: 420, background: "#111827", border: "1px solid #1E293B", borderRadius: 20, padding: "32px 28px" },
+  authLogoRow: { display: "flex", alignItems: "center", gap: 12, marginBottom: 24, justifyContent: "center" },
+  authTitle: { fontSize: 22, fontWeight: 800, margin: "0 0 6px", textAlign: "center" },
+  authSub: { color: "#9CA3AF", fontSize: 14, marginBottom: 24, textAlign: "center" },
+  errorBox: { background: "#7F1D1D", border: "1px solid #EF4444", borderRadius: 10, padding: "12px 16px", color: "#FCA5A5", fontSize: 14, marginBottom: 16 },
   inputGroup: { marginBottom: 16 },
-  label: { display: "block", fontSize: 13, fontWeight: 600, color: "#94a3b8", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 },
-  input: { width: "100%", background: "#111827", border: "1px solid #1e293b", borderRadius: 12, padding: "14px 16px", color: "#e2e8f0", fontSize: 15, fontFamily: "inherit", outline: "none", boxSizing: "border-box", transition: "border 0.2s" },
-  quickAddrs: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 },
-  quickAddr: { background: "none", border: "1px solid #1e293b", color: "#64748b", borderRadius: 8, padding: "6px 12px", fontSize: 13, cursor: "pointer", fontFamily: "inherit" },
+  label: { display: "block", fontSize: 12, fontWeight: 700, color: "#9CA3AF", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 },
+  input: { width: "100%", background: "#1F2937", border: "1px solid #374151", borderRadius: 10, padding: "14px 16px", color: "#F3F4F6", fontSize: 15, fontFamily: "inherit", outline: "none", boxSizing: "border-box" },
+  authSwitch: { textAlign: "center", color: "#9CA3AF", fontSize: 14, margin: "16px 0 8px" },
+  linkBtn: { background: "none", border: "none", color: "#D4A017", cursor: "pointer", fontWeight: 700, fontFamily: "inherit", fontSize: 14 },
+  backLink: { display: "block", width: "100%", background: "none", border: "none", color: "#6B7280", cursor: "pointer", fontSize: 14, textAlign: "center", marginTop: 8, fontFamily: "inherit" },
 
-  packageGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
-  packageCard: { background: "#111827", border: "1px solid #1e293b", borderRadius: 14, padding: 20, textAlign: "center", cursor: "pointer", transition: "all 0.2s", fontFamily: "inherit" },
-  packageCardActive: { border: "2px solid #f5a623", background: "#f5a62310" },
-  packageIcon: { fontSize: 32, marginBottom: 8 },
-  packageLabel: { fontWeight: 700, fontSize: 15, color: "#e2e8f0", marginBottom: 4 },
-  packageDesc: { color: "#64748b", fontSize: 12 },
+  // Nav
+  nav: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderBottom: "1px solid #1E293B", background: "#0B0F1Aee", backdropFilter: "blur(12px)", position: "sticky", top: 0, zIndex: 100 },
+  navTitle: { fontWeight: 800, fontSize: 17 },
+  navIconBtn: { background: "#1F2937", border: "none", width: 38, height: 38, borderRadius: "50%", fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" },
+  liveBadge: { background: "#22C55E20", color: "#22C55E", border: "1px solid #22C55E40", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" },
+  backBtn: { background: "none", border: "1px solid #1E293B", color: "#9CA3AF", cursor: "pointer", borderRadius: 8, padding: "8px 14px", fontFamily: "inherit", fontSize: 14 },
 
-  riderList: { display: "flex", flexDirection: "column", gap: 10 },
-  riderCard: { display: "flex", alignItems: "center", gap: 14, background: "#111827", border: "1px solid #1e293b", borderRadius: 14, padding: "14px 16px", cursor: "pointer", transition: "all 0.2s" },
-  riderCardActive: { border: "2px solid #f5a623", background: "#f5a62308" },
-  riderBusy: { opacity: 0.4, cursor: "not-allowed" },
-  riderInfo: { flex: 1 },
-  riderNameBig: { fontWeight: 700, fontSize: 15, marginBottom: 2 },
-  riderSubInfo: { color: "#64748b", fontSize: 13 },
-  riderDist: { color: "#f5a623", fontSize: 12, marginTop: 2, fontWeight: 600 },
-  busyTag: { color: "#ef4444", fontWeight: 500, fontSize: 12 },
-  checkMark: { width: 28, height: 28, borderRadius: "50%", background: "#f5a623", color: "#0a0f1e", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14 },
-  riderDetails: { flex: 1 },
-  riderActions: { display: "flex", gap: 8 },
-  iconBtn: { width: 40, height: 40, borderRadius: "50%", background: "#1e293b", border: "none", cursor: "pointer", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center" },
+  // Main
+  main: { maxWidth: 640, margin: "0 auto", padding: "24px 20px 80px" },
+  welcomeCard: { background: "linear-gradient(135deg,#1a2744,#111827)", border: "1px solid #1E3A5F", borderRadius: 16, padding: "20px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
+  welcomeHi: { fontSize: 18, fontWeight: 800, marginBottom: 4 },
+  welcomeSub: { color: "#9CA3AF", fontSize: 14 },
+  bookBigBtn: { width: "100%", background: "#D4A017", color: "#0B0F1A", border: "none", borderRadius: 14, padding: "18px", fontSize: 17, fontWeight: 900, cursor: "pointer", fontFamily: "inherit", marginBottom: 20 },
+  activeOrderCard: { background: "#111827", border: "1px solid #D4A01740", borderRadius: 14, padding: 16, marginBottom: 24, cursor: "pointer" },
+  liveTag: { color: "#22C55E", fontSize: 12, fontWeight: 700 },
+  sectionHdr: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
+  sectionTitle: { fontSize: 16, fontWeight: 700 },
 
-  // Confirm
-  confirmWrap: { textAlign: "center", padding: "80px 20px" },
-  confirmIcon: { fontSize: 72, marginBottom: 24 },
-  confirmTitle: { fontSize: 28, fontWeight: 900, marginBottom: 12 },
-  confirmSub: { color: "#94a3b8", fontSize: 16 },
-  confirmSpinner: { marginTop: 32 },
+  // Rider row
+  riderRow: { display: "flex", alignItems: "center", gap: 14, background: "#111827", border: "1px solid #1E293B", borderRadius: 14, padding: "14px 16px", marginBottom: 10, cursor: "pointer", transition: "all 0.2s" },
+  riderRowFull: { display: "flex", alignItems: "center", gap: 14, background: "#111827", border: "1px solid #1E293B", borderRadius: 14, padding: "14px 16px", marginBottom: 10, cursor: "pointer", transition: "all 0.2s" },
+  riderSelected: { border: "2px solid #D4A017", background: "#D4A01710" },
+  riderName: { fontWeight: 700, fontSize: 15, marginBottom: 2 },
+  riderMeta: { color: "#6B7280", fontSize: 12 },
+  etaTag: { background: "#D4A01720", color: "#D4A017", border: "1px solid #D4A01740", borderRadius: 6, padding: "3px 8px", fontSize: 12, fontWeight: 700, marginBottom: 4, textAlign: "center" },
+  priceTag: { color: "#9CA3AF", fontSize: 12 },
+  checkCircle: { width: 26, height: 26, borderRadius: "50%", background: "#D4A017", color: "#0B0F1A", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 13, marginTop: 4, marginLeft: "auto" },
 
-  // Track
-  trackWrap: {},
-  mapBox: { position: "relative", background: "#0f1f35", border: "1px solid #1e293b", borderRadius: 16, height: 260, marginBottom: 16, overflow: "hidden", transition: "box-shadow 0.3s" },
-  mapPulse: { boxShadow: "0 0 0 3px #f5a62344" },
-  mapGrid: { position: "absolute", inset: 0, backgroundImage: "linear-gradient(#1a2a3a 1px, transparent 1px), linear-gradient(90deg, #1a2a3a 1px, transparent 1px)", backgroundSize: "20px 20px" },
+  // Avatar
+  avatar: { width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, color: "#fff", flexShrink: 0 },
+
+  // Steps
+  stepRow: { display: "flex", alignItems: "center", marginBottom: 28, gap: 0 },
+  stepItem: { display: "flex", alignItems: "center", gap: 6, flex: 1, position: "relative" },
+  stepDot: { width: 30, height: 30, borderRadius: "50%", background: "#1E293B", border: "2px solid #374151", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 12, color: "#6B7280", flexShrink: 0, zIndex: 1 },
+  stepActive: { background: "#D4A01720", border: "2px solid #D4A017", color: "#D4A017" },
+  stepDone: { background: "#D4A017", border: "2px solid #D4A017", color: "#0B0F1A" },
+  stepLabel: { fontSize: 11, color: "#6B7280", fontWeight: 600, whiteSpace: "nowrap" },
+  stepLine: { position: "absolute", left: 36, right: -8, height: 2, background: "#1E293B", top: "50%", transform: "translateY(-50%)" },
+
+  // Package
+  pkgGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
+  pkgCard: { background: "#111827", border: "1px solid #1E293B", borderRadius: 14, padding: 16, textAlign: "center", cursor: "pointer", transition: "all 0.2s", fontFamily: "inherit" },
+  pkgActive: { border: "2px solid #D4A017", background: "#D4A01710" },
+
+  // Quick chips
+  quickAddrs: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 },
+  quickChip: { background: "none", border: "1px solid #1E293B", color: "#6B7280", borderRadius: 8, padding: "6px 12px", fontSize: 12, cursor: "pointer", fontFamily: "inherit" },
+
+  // Summary
+  summaryBox: { background: "#0B0F1A", border: "1px solid #1E293B", borderRadius: 12, padding: 16, marginTop: 16 },
+  sumRow: { display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 10, marginBottom: 10, borderBottom: "1px solid #1E293B", fontSize: 14 },
+
+  // Payment
+  payCard: { background: "#111827", border: "1px solid #1E293B", borderRadius: 20, padding: "28px 24px" },
+  paystackBadge: { textAlign: "center", color: "#22C55E", fontWeight: 700, fontSize: 14, margin: "20px 0 6px" },
+  payMethods: { textAlign: "center", color: "#6B7280", fontSize: 12, marginBottom: 20 },
+  paystackBtn: { width: "100%", background: "#00C3F7", color: "#0B0F1A", border: "none", borderRadius: 12, padding: "16px", fontSize: 16, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" },
+
+  // Map
+  mapBox: { position: "relative", background: "#0A1628", border: "1px solid #1E293B", borderRadius: 16, height: 240, marginBottom: 16, overflow: "hidden" },
+  mapGrid: { position: "absolute", inset: 0, backgroundImage: "linear-gradient(#0D2137 1px,transparent 1px),linear-gradient(90deg,#0D2137 1px,transparent 1px)", backgroundSize: "22px 22px" },
   mapSvg: { position: "absolute", inset: 0, width: "100%", height: "100%" },
-  mapRider: { position: "absolute", fontSize: 22, transform: "translate(-50%, -50%)", zIndex: 10, transition: "left 1s ease, top 1s ease" },
+  mapRider: { position: "absolute", fontSize: 22, transform: "translate(-50%,-50%)", zIndex: 10, transition: "left 1.2s ease,top 1.2s ease" },
   mapDest: { position: "absolute", right: "28%", bottom: "22%", fontSize: 22 },
-  mapYou: { position: "absolute", right: "15%", bottom: "12%", fontSize: 20 },
-  mapEta: { position: "absolute", top: 12, right: 12, background: "#0a0f1ecc", border: "1px solid #f5a623", color: "#f5a623", borderRadius: 8, padding: "6px 12px", fontSize: 13, fontWeight: 700, backdropFilter: "blur(4px)" },
+  mapHome: { position: "absolute", right: "15%", bottom: "12%", fontSize: 20 },
+  mapEtaChip: { position: "absolute", top: 10, right: 10, background: "#0B0F1Acc", border: "1px solid #D4A017", color: "#D4A017", borderRadius: 8, padding: "5px 12px", fontSize: 13, fontWeight: 700, backdropFilter: "blur(4px)" },
 
-  progressWrap: { display: "flex", alignItems: "center", gap: 12, marginBottom: 24 },
-  progressBar: { flex: 1, height: 8, background: "#1e293b", borderRadius: 4, overflow: "hidden" },
-  progressFill: { height: "100%", background: "linear-gradient(90deg, #f5a623, #ff6b00)", borderRadius: 4, transition: "width 1s ease" },
-  progressPct: { color: "#f5a623", fontWeight: 700, fontSize: 14, width: 36 },
+  // Timeline dots
+  tlDot: { width: 30, height: 30, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, flexShrink: 0, zIndex: 1 },
+  tlDone: { background: "#D4A017", color: "#0B0F1A" },
+  tlActive: { background: "#D4A01720", border: "2px solid #D4A017", color: "#D4A017" },
+  tlPending: { background: "#1E293B", border: "1px solid #374151", color: "#4B5563" },
 
-  timeline: { display: "flex", flexDirection: "column", gap: 0, marginBottom: 24, position: "relative" },
-  timelineItem: { display: "flex", alignItems: "flex-start", gap: 14, position: "relative", paddingBottom: 16 },
-  timelineDot: { width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, flexShrink: 0, zIndex: 1 },
-  timelineDone: { background: "#f5a623", color: "#0a0f1e" },
-  timelineActive: { background: "#f5a62320", border: "2px solid #f5a623", color: "#f5a623" },
-  timelinePending: { background: "#1e293b", border: "1px solid #334155", color: "#475569" },
-  timelineLabel: { paddingTop: 6, fontSize: 14, fontWeight: 500, color: "#94a3b8" },
-  timelineConnector: { position: "absolute", left: 15, top: 32, width: 2, height: "calc(100% - 16px)", background: "#1e293b", transform: "translateX(-50%)" },
-  activePing: { color: "#f5a623", fontSize: 11, fontWeight: 700 },
+  // Order ID
+  orderIdBar: { background: "#111827", border: "1px solid #1E293B", borderRadius: 10, padding: "10px 16px", fontSize: 14, marginBottom: 16, textAlign: "center" },
 
-  riderInfoCard: { display: "flex", alignItems: "center", gap: 16, background: "#111827", border: "1px solid #1e293b", borderRadius: 14, padding: 16 },
+  // Rider info card
+  riderInfoCard: { display: "flex", alignItems: "center", gap: 14, background: "#111827", border: "1px solid #1E293B", borderRadius: 14, padding: 16, marginTop: 8 },
+  iconBtn: { width: 40, height: 40, borderRadius: "50%", background: "#1E293B", border: "none", cursor: "pointer", fontSize: 18 },
+
+  // Profile
+  profileCard: { background: "#111827", border: "1px solid #1E293B", borderRadius: 20, padding: "32px 24px", textAlign: "center", marginBottom: 24 },
+  profileAvatar: { width: 80, height: 80, borderRadius: "50%", background: "#D4A017", color: "#0B0F1A", fontSize: 32, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" },
+  menuItem: { display: "flex", alignItems: "center", gap: 16, width: "100%", background: "#111827", border: "1px solid #1E293B", borderRadius: 12, padding: "16px 20px", marginBottom: 10, cursor: "pointer", fontFamily: "inherit", color: "#F3F4F6", fontSize: 15, transition: "all 0.2s" },
 };
 
 const css = `
-  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap');
-  * { box-sizing: border-box; }
-  body { margin: 0; }
-  .fade-in { animation: fadeIn 0.35s ease; }
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-  .pop-in { animation: popIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
-  @keyframes popIn { from { transform: scale(0.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-  .btn-hover:hover { transform: translateY(-2px); box-shadow: 0 8px 24px #f5a62330; }
-  .btn-hover:active { transform: translateY(0); }
-  .card-hover:hover { transform: translateY(-2px); border-color: #f5a62350 !important; box-shadow: 0 4px 16px #0006; }
-  .rider-pulse { animation: riderFloat 2s ease-in-out infinite; }
-  @keyframes riderFloat { 0%,100% { filter: drop-shadow(0 0 6px #f5a623); } 50% { filter: drop-shadow(0 0 12px #f5a623); } }
-  .spinner { width: 36px; height: 36px; border: 3px solid #1e293b; border-top-color: #f5a623; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  input:focus { border-color: #f5a623 !important; }
+  @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800;900&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { margin: 0; background: #0B0F1A; }
+  .fade-in { animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .btn-pop { transition: transform 0.15s, box-shadow 0.15s; }
+  .btn-pop:hover { transform: translateY(-2px); box-shadow: 0 8px 24px #D4A01730; }
+  .btn-pop:active { transform: translateY(0); }
+  .card-hover { transition: all 0.2s; }
+  .card-hover:hover { transform: translateY(-2px); box-shadow: 0 4px 20px #00000040; border-color: #D4A01740 !important; }
+  .rider-pulse { animation: rFloat 2s ease-in-out infinite; }
+  @keyframes rFloat { 0%,100% { filter: drop-shadow(0 0 6px #D4A017); } 50% { filter: drop-shadow(0 0 14px #D4A017); } }
+  input:focus { outline: none; border-color: #D4A017 !important; box-shadow: 0 0 0 3px #D4A01720; }
   @media (max-width: 480px) {
-    .statsRow { grid-template-columns: repeat(2, 1fr) !important; }
-    .howRow { grid-template-columns: 1fr !important; }
+    .statsRow { grid-template-columns: repeat(2,1fr) !important; }
+    .featRow { grid-template-columns: 1fr !important; }
   }
 `;
+    
